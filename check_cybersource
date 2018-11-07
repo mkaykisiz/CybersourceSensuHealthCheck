@@ -1,0 +1,61 @@
+import argparse
+import requests
+import time
+
+from sensu_plugin import SensuPluginCheck
+
+CYBERSOURCE_HEALTHCHECK_SOURCE = "https://ics2wsa.ic3.com/healthcheck"
+
+
+class CyberSourceHealthCheckCheck(SensuPluginCheck):
+    def __init__(self):
+        self.HEALTHCHECK_RETRY_COUNT, self.HEALTHCHECK_WARNING_LIMIT = self.check_args()
+        super(CyberSourceHealthCheckCheck, self).__init__()
+
+    def healthcheck(self):
+        error_count = 0
+        for step in range(self.HEALTHCHECK_RETRY_COUNT):
+            try:
+                response = requests.get(CYBERSOURCE_HEALTHCHECK_SOURCE, verify=False)
+                if not response.ok:
+                    error_count += 1
+            except:
+                error_count += 1
+            finally:
+                time.sleep(5)
+
+        if error_count == self.HEALTHCHECK_RETRY_COUNT:
+            self.critical(
+                "[CYBERSOURCE HEALTH CHECK] Cybersource Processors Not Accessible")
+        elif error_count > self.HEALTHCHECK_WARNING_LIMIT:
+            self.warning(
+                "[CYBERSOURCE HEALTH CHECK] Cybersource Don't Have Enough Performance")
+
+    def run(self):
+        """
+        It controls the success rate for CyberSource.
+
+        * Checking success rate by requesting CyberSource HealthCheck Endpoint
+
+        """
+        self.healthcheck()  # *
+
+        self.ok("[CYBERSOURCE CHECK] Cybersource HealthCheck Succeeded.")
+
+    def check_args(self):
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--retry_count', help='Healthcheck retry count per source url', type=int, default=0)
+        parser.add_argument('--warning_limit', help='Healthcheck warning limit', type=int, default=0)
+
+        args = parser.parse_args()
+
+        if args.warning_limit < 0:
+            raise ValueError("Warning Limit can not be negative")
+        if args.retry_count < args.warning_limit:
+            raise ValueError("Warning Count can not be more then Retry Count")
+
+        return args.retry_count, args.warning_limit
+
+
+if __name__ == "__main__":
+    CyberSourceHealthCheckCheck().run()
